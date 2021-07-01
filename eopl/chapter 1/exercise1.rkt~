@@ -1,0 +1,16 @@
+#lang racket
+
+;;Exercise 1.12
+;;inlining technique
+
+;; inlining-subst : Symbol x Symbol x Slist -> Slist
+
+(define inlining-subst
+  (lambda (new old slist)
+    (if (null? slist)
+        '()
+        (let ((sexpr (car slist)))
+          (cons (if (symbol? sexpr)
+                    (if (eqv? old sexpr) new sexpr)
+                    (inlining-subst new old sexpr))
+                (inlining-subst new old (cdr slist)))))))

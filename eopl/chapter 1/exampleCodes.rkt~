@@ -1,0 +1,69 @@
+#lang racket
+
+;;induction for list-length
+(define list-length
+  (lambda (lst)
+    (if (null? lst)
+        0
+        (+ 1
+           (list-length (cdr lst))))))
+
+
+;;induction for remove-first
+(define remove-first
+  (lambda (s los)
+    (cond ((null? los) '())
+          ((eq? s (car los)) (cdr los))
+          (else (cons
+                 (car los)
+                 (remove-first s (cdr los)))))))
+
+
+;;induction for occurs-free?
+;;top-down reduction
+;; single variable showup in the lambda expression version
+;;expr = symbols | (lambda (var) (expr)) | (expr expr)
+(define occurs-free?
+  (lambda (var expr)
+    (cond ((symbol? expr) (eqv? var expr))
+          ((eqv? 'lambda (car expr))
+           (and (not (eqv? var (caadr expr)))
+                (occurs-free? var (caddr expr))))
+          (else (or (occurs-free? var (car expr))
+                    (occurs-free? var (cadr expr)))))))
+
+;;induction for subst
+;; lst = () | (S-expr . S-lst)
+;; s-expr = Symbol | S-lst
+(define subst
+  (lambda (new old slist)
+    (cond ((null? slist) '())
+          ((symbol? slist)
+           (if (eqv? old slist)
+               new
+               slist))
+          (else (cons (subst new old (car slist))
+                      (subst new old (cdr slist)))))))
+
+;; programs given in EOPL
+;; Symbol x Symbol x Slist -> Slist
+;; Slist = () | (Sexpr . Slist)
+;; Sexpr = Symbol | Slist
+(define eopl-subst
+  (lambda (new old slist)
+    (if (null? slist)
+        slist
+        (cons (eopl-subst-in-sexpr new old (car slist))
+              (eopl-subst new old (cdr slist))))))
+
+(define eopl-subst-in-sexpr
+  (lambda (new old sexpr)
+    (if (symbol? sexpr)
+        (if (eqv? old sexpr)
+            new
+            sexpr)
+        (eopl-subst new old sexpr))))
+
+(
+
+
