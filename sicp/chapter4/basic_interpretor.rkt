@@ -3,11 +3,9 @@
 (require r5rs)
 ;;; helper functions
 (define (tag-list? tag exp)
-
-  (if (not (list? exp))
+  (if (not (pair? exp))
       false
       (eq? tag (car exp))))
-
 
 ;;; control flow
 ;;;;;; begin
@@ -82,11 +80,38 @@
   (clause-actions test-clause)
 )
 
+;;;;;; and
+(define (and? expr) (tag-list? 'and expr))
+(define (and-booleans expr) (cdr expr))
+
+(define (first-boolean items) (car items))
+(define (rest-booleans items) (cdr items))
+
+;;;;;; eval-and
+(define (eval-and expr env)
+  (define (inner-loop clauses)
+    (cond ((null? clauses) #t)
+          ((not (my-eval (first-boolean clauses) env)) #f)
+          (else (inner-loop (rest-booleans clauses)))))
+  (inner-loop (and-booleans expr)))
+
+;;;;;; or
+(define (or? expr) (tag-list? 'or expr))
+(define (or-booleans expr) (cdr expr))
+
+;;;;;; eval-or
+(define (eval-or expr env)
+  (define (inner-loop clauses)
+    (cond ((null? clauses) false)
+          ((my-eval (first-boolean clauses) env) true)
+          (else (inner-loop (rest-booleans clauses)))))
+  (inner-loop (or-booleans expr)))
+
 ;;;dataflow
 ;;;;;; number, string
 (define (self-evaluating? expr)
   (cond ((number? expr) true)
-        ((number? expr) true)
+        ((string? expr) true)
         (else false)))
 
 ;;;;;; variable
@@ -187,8 +212,7 @@
   (set-cdr! symtab (cons val (symtab-values symtab))))
 
 ;;; environment
-(define base-environment (cons '() '()))
-(define (parent-env env) (cdr env))
+(define (enclosing-env env) (cdr env))
 (define (extend-environment vars vals base-environment)
   (if (= (length vars) (length vals))
       (cons (cons vars vals) base-environment)
@@ -204,8 +228,9 @@
           (vals (cdr symtab)))
       (let ((result (symtab-loop vars vals)))
     (cond ((not (false? result)) result)
-          ((null? (parent-env env)) (error "find-var-val : variable var is not defined"))
-          (else (find-var-val var (parent-env env))))))))
+          ((null? (enclosing-env env))
+           (error "find-var-val :  undefined variable" var))
+          (else (find-var-val var (enclosing-env env))))))))
 
 (define (set-var-val! var val env)
   (define (symtab-loop vars vals)
@@ -217,9 +242,8 @@
           (vals (cdr symtab)))
       (let ((result (symtab-loop vars vals)))
     (cond ((not (false? result)) (void))
-          ((null? (parent-env env)) (error "find-var-val : variable var is not defined"))
-          (else (set-var-val! var val (parent-env env))))))))
-
+          ((null? (enclosing-env env)) (error "find-var-val : variable " var " is not defined"))
+          (else (set-var-val! var val (enclosing-env env))))))))
 
 (define (define-var-val! var val env)
   (let ((symtab (car env)))
@@ -230,7 +254,7 @@
              (set-car! vals val))
             (else (symtab-loop (cdr vars) (cdr vals)))))
     (symtab-loop (symtab-variables symtab)
-                   (symtab-values symtab))))
+                 (symtab-values symtab))))
   
 
 ;;;;;; unit test
@@ -259,13 +283,7 @@
 (define (operator expr) (car expr))
 (define (operands expr) (cdr expr))
 (define (calculate-operands arguments env)
-  (define (inner-loop arg-list)
-    (if (null? arg-list)
-        '()
-        (cons (my-eval (car arg-list) env)
-              (inner-loop (cdr arg-list)))))
-  (inner-loop arguments))
-
+  (map (lambda (arg) (my-eval arg env)) arguments))
 
 ;;;;;; lisp-primitive
 (define primitive-operation
@@ -275,20 +293,25 @@
         (cons '/ /)
         (cons 'remainder remainder)
         (cons '= =)
+        (cons '> >)
+        (cons '< <)
+        (cons '>= >=)
+        (cons '<= <=)
         (cons 'eq? eq?)
         (cons 'list? list?)
         (cons 'cons cons)
         (cons 'car car)
         (cons 'cdr cdr)
+        (cons 'list list)
         (cons 'null? null?)
         (cons 'false? false?)))
 
-(define lisp-primitive (map (lambda (pair) (cons (car pair)
-                                                 (cons 'primitive
-                                                       (cdr pair))))
-                            primitive-operation))
-
-(define (primitive? op) (and (pair? op) (eq? 'primitive (car op))))
+(define (primitive? op) (tag-list? 'primitive op))
+(define lisp-primitive
+  (map (lambda (pair) (cons (car pair)
+                            (cons 'primitive
+                                  (cdr pair))))
+       primitive-operation))
 
 ;;;;;; init-env
 (define (setup-init-environment)
@@ -317,15 +340,19 @@
         ((begin? expr)
          (eval-sequence (begin-sequence expr)
                         env))
+        ((and? expr) (eval-and expr env))
+        ((or? expr) (eval-or expr env))
         ((if? expr) (eval-if expr env))
         ((application? expr)
          (my-apply (my-eval (operator expr) env)
                    (calculate-operands (operands expr) env)
                    env))
         (else
-         (error "my-eval : unknown expression type"))))
+         (error "my-eval : unknown expression type " expr))))
 
 ;;;;;; my-apply function
+;;;;;; two types : (1) primitive : built-in procedure if lisp, i.e. +, -, *, /
+;;;;;;             (2) compound-procedure : function definitions
 (define (my-apply operation operands env)
   (cond ((primitive? operation)
          (apply (cdr operation) operands))
@@ -337,9 +364,4 @@
            operands
            env)))
         (else
-         (error "my-apply : unknown type procedure"))))
-
-    
-        
-        
-
+         (error "my-apply : unknown type procedure " operation))))
