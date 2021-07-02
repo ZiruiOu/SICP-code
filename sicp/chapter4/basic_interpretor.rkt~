@@ -41,11 +41,6 @@
       (cadddr expr)
       'false))
 
-;;;;;; make if
-(define (make-if cond then else)
-  (cons 'if (cons cond (list then else))))
-
-
 ;;;;;; eval-if
 (define (eval-if expr env)
   (if (my-eval (if-cond expr) env)
@@ -58,7 +53,8 @@
   (if? test-if)
   (if-cond test-if)
   (if-then test-if)
-  (if-else test-if))
+  (if-else test-if)
+)
 
 ;;;;;; (cond clauses)
 ;;;;;; clauses := clause clauses | end-clause
@@ -73,7 +69,6 @@
 (define (first-clause clauses) (car clauses))
 (define (rest-clauses clauses) (cdr clauses))
 (define (last-clause? clause) (eq? 'else (clause-cond clause)))
-
 ;;;;;; unit test
 (define (test-cond)
   (define my-cond '(cond ((< x -2) (set! x (x + 100)) (* x 4))
@@ -82,32 +77,8 @@
   (define test-clauses (cond-clauses my-cond))
   (define test-clause  (car test-clauses))
   (clause-cond test-clause)
-  (clause-actions test-clause))
-
-;;;;;; eval cond
-(define (cond->if expr)
-  (expand-clauses (cond-clauses expr)))
-
-;;;;;; convert cond to if
-(define (expand-clauses clauses)
-  (if (null? clauses)
-      '(void)
-      (let ((head (first-clause clauses))
-            (tail (rest-clauses clauses)))
-        (if (last-clause? head)
-            (make-begin (clause-actions head))
-            (make-if (clause-cond head)
-                     (make-begin (clause-actions head))
-                     (expand-clauses tail))))))
-
-;;;;;; unit-test
-(define (cond->if-test)
-  (define convert-test1
-    '(cond ((< x -100) (+ x 4) (set! x (* x (- x 100))) (* x (* x x x)))
-           ((< x -10) (+ (* x 4) (- 3 7)))
-           ((= x 0) 100000)
-           (else (* x x))))
-  (println (cond->if convert-test1)))
+  (clause-actions test-clause)
+)
 
 ;;;;;; and
 (define (and? expr) (tag-list? 'and expr))
@@ -169,15 +140,15 @@
   (define my-lambda '(lambda (x y z) (set! x (+ x 1)) (set! y (* y 2)) (set! z (/ z 3)) (+ x y z)))
   (lambda? my-lambda)
   (lambda-variables my-lambda)
-  (lambda-body my-lambda))
+  (lambda-body my-lambda)
+)
 
 ;;;;;; make lambda
 (define (make-lambda vars body)
   (cons 'lambda (cons vars body)))
 
 ;;;;;; unit test
-(define (make-lambda-test)
-  (make-lambda '(x y z) '((set! x (+ x 1)) (set! y (* y 2)) (set! z (/ z 3)) (+ x y z))))
+(make-lambda '(x y z) '((set! x (+ x 1)) (set! y (* y 2)) (set! z (/ z 3)) (+ x y z)))
 
 ;;;;;; procedure
 (define (compound-procedure? expr) (tag-list? 'procedure expr))
@@ -241,7 +212,6 @@
   (set-cdr! symtab (cons val (symtab-values symtab))))
 
 ;;; environment
-(define (current-symtab env) (car env))
 (define (enclosing-env env) (cdr env))
 (define (extend-environment vars vals base-environment)
   (if (= (length vars) (length vals))
@@ -249,16 +219,18 @@
       (error "extend-environment : variables and values not match")))
 
 (define (find-var-val var env)
-  (define (env-loop env)
-    (define (scan vars vals)
-      (cond ((null? vars) (env-loop (enclosing-env env)))
-            ((eq? var (car vars)) (car vals))
-            (else (scan (cdr vars) (cdr vals)))))
-    (if (null? env)
-        (error "find-var-val : undefined variable" var)
-        (scan (symtab-variables (current-symtab env))
-              (symtab-values (current-symtab env)))))
-  (env-loop env))
+  (define (symtab-loop vars vals)
+    (cond ((null? vars) #f)
+          ((eq? var (car vars)) (car vals))
+          (else (symtab-loop (cdr vars) (cdr vals)))))
+  (let ((symtab (car env)))
+    (let ((vars (car symtab))
+          (vals (cdr symtab)))
+      (let ((result (symtab-loop vars vals)))
+    (cond ((not (false? result)) result)
+          ((null? (enclosing-env env))
+           (error "find-var-val :  undefined variable" var))
+          (else (find-var-val var (enclosing-env env))))))))
 
 (define (set-var-val! var val env)
   (define (symtab-loop vars vals)
@@ -286,7 +258,6 @@
   
 
 ;;;;;; unit test
-(define (test-env)
   (define env1 (cons (cons '(+ - * / x y z w aha square)
                            (list + - * / 10 20 30 40 -100 '(lambda (n) (* n n))))
                      '()))
@@ -306,7 +277,6 @@
   (define-var-val! 'wow 14 env3)
   (define-var-val! 'mili 114514 env3)
   (define-var-val! 'milet -114514 env3)
- )
 
 ;;;;;; function call
 (define (application? expr) (list? expr))
@@ -328,25 +298,13 @@
         (cons '>= >=)
         (cons '<= <=)
         (cons 'eq? eq?)
-        (cons 'not not)
         (cons 'list? list?)
-        (cons 'pair? pair?)
-        (cons 'length length)
         (cons 'cons cons)
         (cons 'car car)
         (cons 'cdr cdr)
-        (cons 'cadr cadr)
-        (cons 'cddr cddr)
         (cons 'list list)
-        (cons 'append append)
         (cons 'null? null?)
-        (cons 'number? number?)
-        (cons 'symbol? symbol?)
-        (cons 'false? false?)
-        (cons 'read  read)
-        (cons 'display display)
-        (cons 'displayln displayln)
-        (cons 'sqrt    sqrt)))
+        (cons 'false? false?)))
 
 (define (primitive? op) (tag-list? 'primitive op))
 (define lisp-primitive
@@ -385,8 +343,6 @@
         ((and? expr) (eval-and expr env))
         ((or? expr) (eval-or expr env))
         ((if? expr) (eval-if expr env))
-        ((cond? expr)
-         (eval-if (cond->if expr) env))
         ((application? expr)
          (my-apply (my-eval (operator expr) env)
                    (calculate-operands (operands expr) env)
@@ -409,24 +365,3 @@
            env)))
         (else
          (error "my-apply : unknown type procedure " operation))))
-
-;;; dirver
-(define (user-print object)
-  (cond ((compound-procedure? object)
-         (displayln (list 'compound-procedure
-                        (procedure-arguments object)
-                        (procedure-body object))))
-        ((eq? object (void)) (void))
-        (else (displayln object))))
-
-(define (driver-loop)
-  (let ((input (read)))
-    (if (eq? input eof)
-        (void)
-        (let ((output (my-eval input init-env)))
-          (user-print output)
-          (driver-loop)))))
-
-;;; start
-(driver-loop)
-
